@@ -1,13 +1,17 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UserModule } from './user/user.module';
+import { UserModule } from './modules/user/user.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { configuration } from 'config/configuration';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { dataSourceOptions } from 'config/database.config';
-import { AuthModule } from './auth/auth.module';
+
+import { AuthModule } from './modules/auth/auth.module';
 import * as crypto from 'crypto';
+import { dataSourceOptions } from './data-source';
+import { UserTokenModule } from './modules/user-token/user-token.module';
+import { OtpModule } from './modules/otp/otp.module';
+
 global.crypto = crypto as any;
 
 @Module({
@@ -24,6 +28,9 @@ global.crypto = crypto as any;
     }),
     UserModule,
     AuthModule,
+    UserTokenModule,
+    OtpModule,
+   
   ],
   controllers: [AppController],
   providers: [AppService],

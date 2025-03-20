@@ -104,7 +104,7 @@ const recordNotFound = (data: Data, res) =>
 const mongoError = (err, res) =>
   res.status(responseStatusCode.internalServerError).json({
     status: 0,
-    message: 'Mongo db related error',
+    message: 'postgray related error',
     data: err,
   });
 
