@@ -2,6 +2,7 @@ import { Controller,  Post, Body, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 
 import { CreateUserDto } from 'src/modules/user/dto/create-user.dto';
+import { VarifyOptDto } from './dto/varifyopt.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -17,4 +18,9 @@ export class AuthController {
     return this.authService.login(email, password, res);
   }
   
+
+  @Post('verifyotp')
+  async verifyOtp(@Body() varifyOptDto: VarifyOptDto, ) {
+    return await this.authService.verifySignupOtp(varifyOptDto);
+  }
 }

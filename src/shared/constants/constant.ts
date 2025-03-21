@@ -12,7 +12,7 @@ export const MESSAGE = {
   METHOD_NOT_ALLOWED: 'Method Not Allowed.',
   MAIL_NOT_SEND: 'Mail not send for this configuration',
   ALREADY_EXISTS: (record: string) => `${record} Already Exists`,
-  OTP_VERIFICATION: 'Your Metaverse Verification OTP',
+  OTP_VERIFICATION: ' skype Verification OTP',
   VERIFY_OTP_SENT_TO: (email: string) =>
     `An OTP has been sent to ${email}. Please check your inbox.`,
   INVALID_OTP: 'Invalid OTP!',

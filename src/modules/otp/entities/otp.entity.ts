@@ -1,8 +1,10 @@
 import { User } from "src/modules/user/entities/user.entity";
 import { OtpType } from "src/shared/constants/enum";
-import { Column, JoinColumn, ManyToOne } from "typeorm";
+import { DefaultEntity } from "src/shared/entities/DefaultEntity";
+import { Column, Entity, JoinColumn, ManyToOne } from "typeorm";
 
-export class Otp {
+@Entity()
+export class Otp extends DefaultEntity {
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User;
