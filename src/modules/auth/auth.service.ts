@@ -186,7 +186,10 @@ export class AuthService {
     const token = this.generateToken(user.id, 'fk_user', 'user');
     await this.createUserToken({ fk_user: user.id, token });
     return response.successResponse(
-      { message: 'Login successful', data: { id: user.id, token } },
+      {
+        message: 'Login successful',
+        data: { id: user.id, name: user.name, token },
+      },
       res,
     );
   }
@@ -241,9 +244,101 @@ export class AuthService {
         id: entity.id,
         name: entity.name,
         email: entity.email,
-        
       },
       Token,
     };
+  }
+
+  async forgotPassword(email: string, res: Response) {
+    const user = await this.userRepository.findOne({
+      where: { email },
+    });
+
+    if (!user) {
+      return response.badRequest({ message: 'Email not found', data: {} }, res);
+    }
+
+    // Generate OTP
+    const otpCode = generateRandomOtp();
+    const otp = new Otp();
+    otp.user = user;
+    otp.otp = otpCode;
+    otp.email = user.email;
+    otp.type = OtpType.FORGOT_PASSWORD;
+    otp.expire_at = Math.floor((Date.now() + 600000) / 1000); // Expires in 10 minutes
+
+    await this.otpRepository.save(otp);
+    await sendOtp(user, otpCode);
+
+    return response.successResponse(
+      {
+        message: `Password reset OTP sent to ${user.email}`,
+        data: { email: user.email },
+      },
+      res,
+    );
+  }
+
+  async verifyForgotPasswordOtp(verifyOtpDto: VarifyOptDto) {
+    const otp = await this.otpRepository.findOne({
+      where: {
+        email: verifyOtpDto.email,
+        otp: verifyOtpDto.otp,
+        is_verified: false,
+        type: OtpType.FORGOT_PASSWORD,
+      },
+      relations: {
+        user: true,
+      },
+    });
+
+    if (!otp) {
+      throw new BadRequestException(MESSAGE.INVALID_OTP);
+    }
+
+    const isExpired = otp.expire_at <= Math.floor(Date.now() / 1000);
+    if (isExpired) {
+      await this.otpRepository.update(otp.id, {
+        deleted_at: new Date().toISOString(),
+      });
+      throw new BadRequestException(MESSAGE.INVALID_OTP);
+    }
+
+    await this.otpRepository.update(otp.id, {
+      is_verified: true,
+    });
+
+    return {
+      message: 'OTP verified successfully',
+      email: otp.email,
+    };
+  }
+
+  async resetPassword(email: string, newPassword: string, res: Response) {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { email },
+      });
+
+      if (!user) {
+        return response.badRequest(
+          { message: 'Invalid reset token', data: {} },
+          res,
+        );
+      }
+
+      user.password = await bcrypt.hash(newPassword, 10);
+      await this.userRepository.save(user);
+
+      return response.successResponse(
+        { message: 'Password reset successful', data: {} },
+        res,
+      );
+    } catch (error) {
+      return response.badRequest(
+        { message: 'Invalid or expired reset token', data: {} },
+        res,
+      );
+    }
   }
 }
