@@ -1,19 +1,22 @@
-import { DefaultEntity } from 'src/shared/entities/DefaultEntity';
-import { Column, Entity } from 'typeorm';
-@Entity()
-export class Chat extends DefaultEntity {
-  @Column({ type: 'character varying' })
-  chat: string;
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
 
-  @Column({ type: 'character varying' })
+@Entity()
+export class Chat {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column()
   sender: string;
 
-  @Column({ type: 'character varying' })
-  receiver: string;
-
-  @Column({ type: 'character varying' })
+  @Column()
   room: string;
 
-  @Column({ type: 'boolean', default: false })
-  is_read: boolean;
+  @Column('text')
+  message: string;
+
+  @CreateDateColumn()
+  timestamp: Date;
+
+  @Column({ nullable: true })
+  receiver: string;
 }

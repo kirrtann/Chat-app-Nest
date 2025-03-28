@@ -123,13 +123,18 @@ export class AuthService {
     });
 
     if (already) {
-      return response.badRequest(
-        {
-          message: 'Email already exists',
-          data: { email: createUserDto.email },
-        },
-        res,
-      );
+      if (already.is_verified) {
+        return response.badRequest(
+          {
+            message: 'Email already exists and is verified',
+            data: { email: createUserDto.email },
+          },
+          res,
+        );
+      }
+      // Delete existing unverified user
+      
+      // await this.userRepository.delete(already.id);
     }
 
     // Create new user

@@ -13,6 +13,7 @@ import { UserTokenModule } from './modules/user-token/user-token.module';
 import { OtpModule } from './modules/otp/otp.module';
 // import { ChatGateway } from './chat/chat.gateway';
 import { ChatModule } from './chat/chat.module';
+import { ContactModule } from './modules/contact/contact.module';
 
 global.crypto = crypto as any;
 
@@ -33,6 +34,7 @@ global.crypto = crypto as any;
     UserTokenModule,
     OtpModule,
     ChatModule,
+    ContactModule,
    
   ],
   controllers: [AppController],

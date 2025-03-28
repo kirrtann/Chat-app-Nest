@@ -1,4 +1,5 @@
 export enum UserStatus {
+  PENDING = 'pending',
   ACTIVE = 'active',
   BLOCKED = 'blocked',
 }
@@ -12,3 +13,4 @@ export enum DefaultStatus {
   ACTIVE = 'active',
   IN_ACTIVE = 'in_active',
 }
+

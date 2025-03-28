@@ -6,6 +6,9 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { Chat } from './entities/chat.entity';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 
 @WebSocketGateway(3002, {
   cors: {
@@ -13,20 +16,32 @@ import { Server, Socket } from 'socket.io';
     methods: ['GET', 'POST'],
     credentials: true,
   },
-   host: '0.0.0.0',
+  host: '0.0.0.0',
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  constructor(
+    @InjectRepository(Chat)
+    private chatRepository: Repository<Chat>
+  ) {}
+
   @WebSocketServer()
   server: Server;
 
   private rooms: Map<string, Set<string>> = new Map();
+  private userSocketMap: Map<string, string> = new Map(); // Maps socket.id to userId
 
   handleConnection(client: Socket) {
-    console.log(' User Connected:', client.id, new Date().toLocaleTimeString());
+    const userId = client.handshake.query.userId as string;
+    if (userId) {
+      this.userSocketMap.set(client.id, userId);
+      console.log('User Connected:', { socketId: client.id, userId, time: new Date().toLocaleTimeString() });
+    }
   }
 
   handleDisconnect(client: Socket) {
-    console.log('User Disconnected:', client.id);
+    const userId = this.userSocketMap.get(client.id);
+    this.userSocketMap.delete(client.id);
+    console.log('User Disconnected:', { socketId: client.id, userId });
 
     this.rooms.forEach((users, room) => {
       if (users.has(client.id)) {
@@ -43,22 +58,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
-  @SubscribeMessage('join-private-room')
-  handleJoinPrivateRoom(client: Socket, data: { room: string }) {
-    client.join(data.room);
+  // @SubscribeMessage('join-private-room')
+  // handleJoinPrivateRoom(client: Socket, data: { room: string }) {
+  //   client.join(data.room);
 
-    if (!this.rooms.has(data.room)) {
-      this.rooms.set(data.room, new Set());
-    }
-    this.rooms.get(data.room)?.add(client.id);
+  //   if (!this.rooms.has(data.room)) {
+  //     this.rooms.set(data.room, new Set());
+  //   }
+  //   this.rooms.get(data.room)?.add(client.id);
 
-    console.log(` User ${client.id} joined private room: ${data.room}`);
+  //   console.log(` User ${client.id} joined private room: ${data.room}`);
 
-    this.server.to(data.room).emit('user-update', {
-      users: Array.from(this.rooms.get(data.room) || []),
-      message: `User ${client.id} joined private chat.`,
-    });
-  }
+  //   this.server.to(data.room).emit('user-update', {
+  //     users: Array.from(this.rooms.get(data.room) || []),
+  //     message: `User ${client.id} joined private chat.`,
+  //   });
+  // }
 
   @SubscribeMessage('join-room')
   handleJoinRoom(client: Socket, room: string) {
@@ -79,17 +94,80 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.emit('room-joined', Array.from(this.rooms.get(room) || []));
   }
 
+  private getRoomParticipants(room: string): string[] {
+    const users = this.rooms.get(room);
+    if (!users) return [];
+    return Array.from(users).map(socketId => this.userSocketMap.get(socketId)).filter(Boolean) as string[];
+  }
+
   @SubscribeMessage('private-message')
-  handlePrivateMessage(
+  async handlePrivateMessage(
     client: Socket,
     payload: { room: string; message: string },
   ) {
     const { room, message } = payload;
+    const userId = this.userSocketMap.get(client.id);
+    
+    // Get participants in the room
+    const participants = this.getRoomParticipants(room);
+    
+    // Verify exactly 2 participants for private chat
+    if (participants.length !== 2) {
+      client.emit('error', { message: 'Private chat requires exactly 2 participants' });
+      return;
+    }
 
-    console.log(` Message from ${client.id}: ${message}`);
+    // Determine receiver (the other participant)
+    const receiver = participants.find(id => id !== userId);
+
+    // Create new chat entity
+    const chatMessage = new Chat();
+    chatMessage.sender = userId;
+    chatMessage.receiver = receiver;
+    chatMessage.room = room;
+    chatMessage.message = message;
+    chatMessage.timestamp = new Date();
+    
+    // Save to database
+    await this.saveChat(chatMessage);
+
+    console.log(`Message from ${userId} to ${receiver}: ${message}`);
 
     this.server
       .to(room)
-      .emit('private-message', { user: client.id, text: message });
+      .emit('private-message', { 
+        user: client.id, 
+        userId: userId,
+        receiver: receiver,
+        text: message, 
+        room: room,
+        timestamp: chatMessage.timestamp
+      });
+  }
+
+  async saveChat(chat: Chat) {  
+    try {
+      return await this.chatRepository.save(chat);
+    } catch (error) {
+      console.error('Error saving chat:', error);
+      throw error;
+    }
+  }
+
+  async getChat(room: string) {
+    return await this.chatRepository.find({ 
+      where: { room },
+      order: { timestamp: 'ASC' } // Order messages by timestamp
+    });
+  }
+
+  async getChatByUser(sender: string, receiver: string) {
+    return await this.chatRepository.find({
+      where: [
+        { sender, receiver },
+        { sender: receiver, receiver: sender },
+      ],
+      order: { timestamp: 'ASC' } // Order messages by timestamp
+    });
   }
 }
