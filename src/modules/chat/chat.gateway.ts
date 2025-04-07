@@ -126,7 +126,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     chatMessage.receiver = receiver;
     chatMessage.room = room;
     chatMessage.message = message;
-    chatMessage.timestamp = new Date();
+    
     
     // Save to database
     await this.saveChat(chatMessage);
@@ -141,7 +141,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         receiver: receiver,
         text: message, 
         room: room,
-        timestamp: chatMessage.timestamp
+       
       });
   }
 
@@ -157,7 +157,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async getChat(room: string) {
     return await this.chatRepository.find({ 
       where: { room },
-      order: { timestamp: 'ASC' } // Order messages by timestamp
+      
     });
   }
 
@@ -167,7 +167,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         { sender, receiver },
         { sender: receiver, receiver: sender },
       ],
-      order: { timestamp: 'ASC' } // Order messages by timestamp
+     
     });
   }
 }
