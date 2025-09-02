@@ -12,6 +12,16 @@ import { Chat } from './entities/chat.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 
+interface UserInfo {
+  userId: string;
+  socketId: string;
+}
+
+interface RoomData {
+  receiverId: string;
+  senderId: string;
+}
+
 @WebSocketGateway(3002, {
   cors: {
     origin: '*',
@@ -32,8 +42,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  private rooms: Map<string, Set<string>> = new Map();
-  private userSocketMap: Map<string, string> = new Map();
+  private rooms: Map<string, Set<UserInfo>> = new Map();
+  private userSocketMap: Map<string, UserInfo> = new Map();
+  private roomMetadata: Map<string, RoomData> = new Map();
 
   handleConnection(client: Socket) {
     try {
@@ -45,11 +56,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      this.userSocketMap.set(client.id, userId);
+      const userInfo: UserInfo = {
+        userId,
+        socketId: client.id,
+      };
+
+      this.userSocketMap.set(client.id, userInfo);
 
       client.emit('connected', {
         message: 'Successfully connected',
         socketId: client.id,
+        userId,
       });
     } catch (error) {
       console.error('Connection error:', error);
@@ -60,21 +77,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleDisconnect(client: Socket) {
     try {
-      const userId = this.userSocketMap.get(client.id);
+      const userInfo = this.userSocketMap.get(client.id);
       this.userSocketMap.delete(client.id);
 
       this.rooms.forEach((users, room) => {
-        if (users.has(client.id)) {
-          users.delete(client.id);
+        const userToRemove = Array.from(users).find(
+          (u) => u.socketId === client.id,
+        );
+        if (userToRemove) {
+          users.delete(userToRemove);
 
           this.server.to(room).emit('user-left', {
-            userId: userId,
+            userId: userInfo?.userId,
             room: room,
-            message: `User ${userId} left the chat`,
+            message: `User ${userInfo?.userId} left the chat`,
           });
 
           if (users.size === 0) {
             this.rooms.delete(room);
+            this.roomMetadata.delete(room);
           }
         }
       });
@@ -86,103 +107,76 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('join-room')
   handleJoinRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() room: string,
+    @MessageBody() data: { senderId: string; receiverId: string },
   ) {
-    try {
-      if (!room || typeof room !== 'string') {
-        client.emit('error', { message: 'Invalid room ID' });
-        return;
-      }
+    const { senderId, receiverId } = data;
 
-      const userId = this.userSocketMap.get(client.id);
-      if (!userId) {
-        client.emit('error', { message: 'User not authenticated' });
-        return;
-      }
-
-      client.join(room);
-
-      if (!this.rooms.has(room)) {
-        this.rooms.set(room, new Set());
-      }
-      this.rooms.get(room)?.add(client.id);
-
-      const roomUsers = Array.from(this.rooms.get(room) || [])
-        .map((socketId) => this.userSocketMap.get(socketId))
-        .filter(Boolean);
-
-      client.emit('room-joined', {
-        room: room,
-        users: roomUsers,
-        message: 'Successfully joined room',
-      });
-
-      client.to(room).emit('user-joined', {
-        userId: userId,
-        room: room,
-        users: roomUsers,
-        message: `User ${userId} joined the chat`,
-      });
-    } catch (error) {
-      console.error(' Join room error:', error);
-      client.emit('error', { message: 'Failed to join room' });
+    if (!senderId || !receiverId) {
+      client.emit('error', { message: 'SenderId and ReceiverId required' });
+      return;
     }
+
+    const userInfo = this.userSocketMap.get(client.id);
+    if (!userInfo) {
+      client.emit('error', { message: 'User not authenticated' });
+      return;
+    }
+
+    const room = generateRoomId(senderId, receiverId);
+    client.join(room);
+
+    if (!this.rooms.has(room)) {
+      this.rooms.set(room, new Set());
+      this.roomMetadata.set(room, { senderId, receiverId });
+    }
+
+    this.rooms.get(room)?.add(userInfo);
+
+    client.emit('room-joined', {
+      room,
+      users: Array.from(this.rooms.get(room) || []),
+    });
+    client.to(room).emit('user-joined', { userId: userInfo.userId, room });
   }
 
   @SubscribeMessage('send-message')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { room: string; message: string },
+    @MessageBody()
+    payload: { senderId: string; receiverId: string; message: string },
   ) {
-    try {
-      const { room, message } = payload;
+    const { senderId, receiverId, message } = payload;
 
-      if (!room || !message?.trim()) {
-        client.emit('error', { message: 'Room and message are required' });
-        return;
-      }
-
-      const userId = this.userSocketMap.get(client.id);
-      if (!userId) {
-        client.emit('error', { message: 'User not authenticated' });
-        return;
-      }
-
-      const participants = this.getRoomParticipants(room);
-
-      if (participants.length < 2) {
-      }
-
-      const receiver = participants.find((id) => id !== userId) || 'unknown';
-
-      // Save message to database
-      const chatMessage = new Chat();
-      chatMessage.sender = userId;
-      chatMessage.receiver = receiver;
-      chatMessage.room = room;
-      chatMessage.message = message.trim();
-
-      const savedMessage = await this.chatRepository.save(chatMessage);
-
-      // Broadcast message to all users in room
-      const messageData = {
-        id: savedMessage.id,
-        userId: userId,
-        sender: userId,
-        receiver: receiver,
-        message: message.trim(),
-        room: room,
-        timestamp: savedMessage.created_at.toISOString(),
-      };
-
-      this.server.to(room).emit('new-message', messageData);
-    } catch (error) {
-      console.error(' Send message error:', error);
+    if (!senderId || !receiverId || !message?.trim()) {
       client.emit('error', {
-        message: 'Failed to send message',
-        details: error.message,
+        message: 'senderId, receiverId and message are required',
       });
+      return;
     }
+
+    const room = generateRoomId(senderId, receiverId);
+    const userInfo = this.userSocketMap.get(client.id);
+    if (!userInfo) {
+      client.emit('error', { message: 'User not authenticated' });
+      return;
+    }
+
+    const chatMessage = new Chat();
+    chatMessage.sender = senderId;
+    chatMessage.receiver = receiverId;
+    chatMessage.room = room;
+    chatMessage.message = message.trim();
+    const savedMessage = await this.chatRepository.save(chatMessage);
+
+    const messageData = {
+      id: savedMessage.id,
+      sender: senderId,
+      receiver: receiverId,
+      message: message.trim(),
+      room,
+      timestamp: savedMessage.created_at.toISOString(),
+    };
+    this.server.to(room).emit('new-message', messageData);
   }
 
   @SubscribeMessage('typing-start')
@@ -190,10 +184,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { room: string },
   ) {
-    const userId = this.userSocketMap.get(client.id);
-    if (userId && data.room) {
+    const userInfo = this.userSocketMap.get(client.id);
+    if (userInfo && data.room) {
       client.to(data.room).emit('user-typing', {
-        userId: userId,
+        userId: userInfo.userId,
         room: data.room,
         isTyping: true,
       });
@@ -205,10 +199,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { room: string },
   ) {
-    const userId = this.userSocketMap.get(client.id);
-    if (userId && data.room) {
+    const userInfo = this.userSocketMap.get(client.id);
+    if (userInfo && data.room) {
       client.to(data.room).emit('user-typing', {
-        userId: userId,
+        userId: userInfo.userId,
         room: data.room,
         isTyping: false,
       });
@@ -220,15 +214,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.emit('pong', { timestamp: new Date().toISOString() });
   }
 
-  private getRoomParticipants(room: string): string[] {
-    const users = this.rooms.get(room);
-    if (!users) return [];
-
-    return Array.from(users)
-      .map((socketId) => this.userSocketMap.get(socketId))
-      .filter(Boolean) as string[];
-  }
-
   async getRecentMessages(room: string, limit: number = 50): Promise<Chat[]> {
     return await this.chatRepository.find({
       where: { room },
@@ -236,4 +221,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       take: limit,
     });
   }
+}
+function generateRoomId(userA: string, userB: string): string {
+  return [userA, userB].sort().join('-');
 }
