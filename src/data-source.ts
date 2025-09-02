@@ -7,7 +7,7 @@ export const dataSourceOptions: DataSourceOptions = {
   username: configuration().DB_USERNAME,
   password: configuration().DB_PASSWORD,
   database: configuration().DB_NAME,
-  synchronize: false,
+  synchronize: true,
   logging: false,
   ssl: process.env.POSTGRES_SSL
     ? {

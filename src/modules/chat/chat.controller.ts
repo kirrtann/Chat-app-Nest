@@ -1,7 +1,7 @@
 import { Chat } from './entities/chat.entity';
 import { Body, Controller, Post, Get, Param } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { User } from '../user/entities/user.entity';
 
 @Controller('chat')
@@ -14,12 +14,10 @@ export class ChatController {
   ) {}
 
   @Post('history')
-  async getChatHistory(
-    @Body() body: { userId: string; otherUserEmail: string },
-  ) {
+  async getChatHistory(@Body() body: { userId: string; otherUserId: string }) {
     try {
       const otherUser = await this.userRepository.findOne({
-        where: { email: body.otherUserEmail },
+        where: { id: body.otherUserId },
       });
 
       if (!otherUser) {
@@ -29,11 +27,13 @@ export class ChatController {
           data: [],
         };
       }
-      const roomId = [body.userId, body.otherUserEmail].sort().join('-');
-
       const messages = await this.chatRepository.find({
-        where: { room: roomId },
+        where: [
+          { sender: body.userId, receiver: body.otherUserId },
+          { sender: body.otherUserId, receiver: body.userId },
+        ],
         order: { created_at: 'ASC' },
+        select: ['id', 'created_at', 'sender', 'receiver', 'message'],
       });
 
       return {
@@ -102,6 +102,59 @@ export class ChatController {
         status: false,
         message: 'Failed to search users',
         data: [],
+      };
+    }
+  }
+
+  @Get('getUserChatlist/:userId')
+  async getUserChatlist(@Param('userId') userId: string) {
+    try {
+      const chats = await this.chatRepository.find({
+        where: [{ sender: userId }, { receiver: userId }],
+        order: { created_at: 'DESC' },
+      });
+
+      if (!chats.length) {
+        return {
+          status: true,
+          message: 'No chats found',
+          data: [],
+        };
+      }
+      const otherUserIds = [
+        ...new Set(
+          chats.map((chat) =>
+            chat.sender === userId ? chat.receiver : chat.sender,
+          ),
+        ),
+      ];
+      const otherUsers = await this.userRepository.find({
+        where: { id: In(otherUserIds) },
+        select: ['id', 'name'],
+      });
+
+      const chatList = otherUsers.map((user) => {
+        const lastMessage = chats.find(
+          (c) => c.sender === user.id || c.receiver === user.id,
+        );
+        return {
+          userId: user.id,
+          userName: user.name,
+          lastMessage: lastMessage?.message || null,
+          lastMessageAt: lastMessage?.created_at || null,
+        };
+      });
+      return {
+        status: true,
+        message: 'Chat list fetched successfully',
+        data: chatList,
+      };
+    } catch (error) {
+      console.error('Error fetching chat list:', error);
+      return {
+        status: false,
+        message: 'Error fetching chat list',
+        error: error.message,
       };
     }
   }
