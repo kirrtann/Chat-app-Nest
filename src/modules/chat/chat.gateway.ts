@@ -4,11 +4,24 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Chat } from './entities/chat.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { User } from '../user/entities/user.entity';
+
+interface UserInfo {
+  userId: string;
+  socketId: string;
+}
+
+interface RoomData {
+  receiverId: string;
+  senderId: string;
+}
 
 @WebSocketGateway(3002, {
   cors: {
@@ -17,157 +30,199 @@ import { InjectRepository } from '@nestjs/typeorm';
     credentials: true,
   },
   host: '0.0.0.0',
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000,
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @InjectRepository(Chat)
-    private chatRepository: Repository<Chat>
+    private chatRepository: Repository<Chat>,
   ) {}
 
   @WebSocketServer()
   server: Server;
 
-  private rooms: Map<string, Set<string>> = new Map();
-  private userSocketMap: Map<string, string> = new Map(); // Maps socket.id to userId
+  private rooms: Map<string, Set<UserInfo>> = new Map();
+  private userSocketMap: Map<string, UserInfo> = new Map();
+  private roomMetadata: Map<string, RoomData> = new Map();
 
   handleConnection(client: Socket) {
-    const userId = client.handshake.query.userId as string;
-    if (userId) {
-      this.userSocketMap.set(client.id, userId);
-      console.log('User Connected:', { socketId: client.id, userId, time: new Date().toLocaleTimeString() });
+    try {
+      const userId = client.handshake.query.userId as string;
+
+      if (!userId) {
+        client.emit('error', { message: 'User ID required' });
+        client.disconnect();
+        return;
+      }
+
+      const userInfo: UserInfo = {
+        userId,
+        socketId: client.id,
+      };
+
+      this.userSocketMap.set(client.id, userInfo);
+
+      client.emit('connected', {
+        message: 'Successfully connected',
+        socketId: client.id,
+        userId,
+      });
+    } catch (error) {
+      console.error('Connection error:', error);
+      client.emit('error', { message: 'Connection failed' });
+      client.disconnect();
     }
   }
 
   handleDisconnect(client: Socket) {
-    const userId = this.userSocketMap.get(client.id);
-    this.userSocketMap.delete(client.id);
-    console.log('User Disconnected:', { socketId: client.id, userId });
+    try {
+      const userInfo = this.userSocketMap.get(client.id);
+      this.userSocketMap.delete(client.id);
 
-    this.rooms.forEach((users, room) => {
-      if (users.has(client.id)) {
-        users.delete(client.id);
-        this.server.to(room).emit('user-update', {
-          users: Array.from(users),
-          message: `User ${client.id} left room ${room}`,
-        });
+      this.rooms.forEach((users, room) => {
+        const userToRemove = Array.from(users).find(
+          (u) => u.socketId === client.id,
+        );
+        if (userToRemove) {
+          users.delete(userToRemove);
 
-        if (users.size === 0) {
-          this.rooms.delete(room);
+          this.server.to(room).emit('user-left', {
+            userId: userInfo?.userId,
+            room: room,
+            message: `User ${userInfo?.userId} left the chat`,
+          });
+
+          if (users.size === 0) {
+            this.rooms.delete(room);
+            this.roomMetadata.delete(room);
+          }
         }
-      }
-    });
+      });
+    } catch (error) {
+      console.error('Disconnection error:', error);
+    }
   }
 
-  // @SubscribeMessage('join-private-room')
-  // handleJoinPrivateRoom(client: Socket, data: { room: string }) {
-  //   client.join(data.room);
-
-  //   if (!this.rooms.has(data.room)) {
-  //     this.rooms.set(data.room, new Set());
-  //   }
-  //   this.rooms.get(data.room)?.add(client.id);
-
-  //   console.log(` User ${client.id} joined private room: ${data.room}`);
-
-  //   this.server.to(data.room).emit('user-update', {
-  //     users: Array.from(this.rooms.get(data.room) || []),
-  //     message: `User ${client.id} joined private chat.`,
-  //   });
-  // }
-
   @SubscribeMessage('join-room')
-  handleJoinRoom(client: Socket, room: string) {
+  handleJoinRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { senderId: string; receiverId: string },
+  ) {
+    const { senderId, receiverId } = data;
+
+    if (!senderId || !receiverId) {
+      client.emit('error', { message: 'SenderId and ReceiverId required' });
+      return;
+    }
+
+    const userInfo = this.userSocketMap.get(client.id);
+    if (!userInfo) {
+      client.emit('error', { message: 'User not authenticated' });
+      return;
+    }
+
+    const room = generateRoomId(senderId, receiverId);
     client.join(room);
 
     if (!this.rooms.has(room)) {
       this.rooms.set(room, new Set());
+      this.roomMetadata.set(room, { senderId, receiverId });
     }
-    this.rooms.get(room)?.add(client.id);
 
-    console.log(`User ${client.id} joined room: ${room}`);
+    this.rooms.get(room)?.add(userInfo);
 
-    this.server.to(room).emit('user-update', {
+    client.emit('room-joined', {
+      room,
       users: Array.from(this.rooms.get(room) || []),
-      message: `User ${client.id} joined room ${room}`,
     });
-
-    client.emit('room-joined', Array.from(this.rooms.get(room) || []));
+    client.to(room).emit('user-joined', { userId: userInfo.userId, room });
   }
 
-  private getRoomParticipants(room: string): string[] {
-    const users = this.rooms.get(room);
-    if (!users) return [];
-    return Array.from(users).map(socketId => this.userSocketMap.get(socketId)).filter(Boolean) as string[];
-  }
-
-  @SubscribeMessage('private-message')
-  async handlePrivateMessage(
-    client: Socket,
-    payload: { room: string; message: string },
+  @SubscribeMessage('send-message')
+  async handleSendMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: { senderId: string; receiverId: string; message: string },
   ) {
-    const { room, message } = payload;
-    const userId = this.userSocketMap.get(client.id);
-    
-    // Get participants in the room
-    const participants = this.getRoomParticipants(room);
-    
-    // Verify exactly 2 participants for private chat
-    if (participants.length !== 2) {
-      client.emit('error', { message: 'Private chat requires exactly 2 participants' });
+    const { senderId, receiverId, message } = payload;
+
+    if (!senderId || !receiverId || !message?.trim()) {
+      client.emit('error', {
+        message: 'senderId, receiverId and message are required',
+      });
       return;
     }
 
-    // Determine receiver (the other participant)
-    const receiver = participants.find(id => id !== userId);
+    const room = generateRoomId(senderId, receiverId);
+    const userInfo = this.userSocketMap.get(client.id);
+    if (!userInfo) {
+      client.emit('error', { message: 'User not authenticated' });
+      return;
+    }
 
-    // Create new chat entity
     const chatMessage = new Chat();
-    chatMessage.sender = userId;
-    chatMessage.receiver = receiver;
+    chatMessage.sender = { id: senderId } as User;
+    chatMessage.receiver = { id: receiverId } as User;
     chatMessage.room = room;
-    chatMessage.message = message;
-    
-    
-    // Save to database
-    await this.saveChat(chatMessage);
+    chatMessage.message = message.trim();
+    const savedMessage = await this.chatRepository.save(chatMessage);
 
-    console.log(`Message from ${userId} to ${receiver}: ${message}`);
-
-    this.server
-      .to(room)
-      .emit('private-message', { 
-        user: client.id, 
-        userId: userId,
-        receiver: receiver,
-        text: message, 
-        room: room,
-       
-      });
+    const messageData = {
+      id: savedMessage.id,
+      sender: { id: senderId },
+      receiver: { id: receiverId },
+      message: message.trim(),
+      room,
+      timestamp: savedMessage.created_at.toISOString(),
+    };
+    this.server.to(room).emit('new-message', messageData);
   }
 
-  async saveChat(chat: Chat) {  
-    try {
-      return await this.chatRepository.save(chat);
-    } catch (error) {
-      console.error('Error saving chat:', error);
-      throw error;
+  @SubscribeMessage('typing-start')
+  handleTypingStart(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { room: string },
+  ) {
+    const userInfo = this.userSocketMap.get(client.id);
+    if (userInfo && data.room) {
+      client.to(data.room).emit('user-typing', {
+        userId: userInfo.userId,
+        room: data.room,
+        isTyping: true,
+      });
     }
   }
 
-  async getChat(room: string) {
-    return await this.chatRepository.find({ 
-      where: { room },
-      
-    });
+  @SubscribeMessage('typing-stop')
+  handleTypingStop(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { room: string },
+  ) {
+    const userInfo = this.userSocketMap.get(client.id);
+    if (userInfo && data.room) {
+      client.to(data.room).emit('user-typing', {
+        userId: userInfo.userId,
+        room: data.room,
+        isTyping: false,
+      });
+    }
   }
 
-  async getChatByUser(sender: string, receiver: string) {
+  @SubscribeMessage('ping')
+  handlePing(@ConnectedSocket() client: Socket) {
+    client.emit('pong', { timestamp: new Date().toISOString() });
+  }
+
+  async getRecentMessages(room: string, limit: number = 50): Promise<Chat[]> {
     return await this.chatRepository.find({
-      where: [
-        { sender, receiver },
-        { sender: receiver, receiver: sender },
-      ],
-     
+      where: { room },
+      order: { created_at: 'DESC' },
+      take: limit,
     });
   }
+}
+function generateRoomId(userA: string, userB: string): string {
+  return [userA, userB].sort().join('-');
 }

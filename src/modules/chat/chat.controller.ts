@@ -1,81 +1,138 @@
 import { Chat } from './entities/chat.entity';
-import { Body, Controller, Post, Param, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Post, Get, Param } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from '../user/entities/user.entity'; // Add this import
+import { In, Repository } from 'typeorm';
+import { User } from '../user/entities/user.entity';
 
 @Controller('chat')
 export class ChatController {
   constructor(
-    @InjectRepository(Chat) private readonly chatRepository: Repository<Chat>,
-    @InjectRepository(User) private readonly userRepository: Repository<User>, // Add this injection
+    @InjectRepository(Chat)
+    private readonly chatRepository: Repository<Chat>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
 
-  @Post('GetChatHistory/:roomId')
-  async getChatHistory(
-    @Param('roomId') roomId: string,
-    @Body() body: { userId: string }
+  @Post('history') async getChatHistory(
+    @Body() body: { userId: string; otherUserId: string },
   ) {
-    const messages = await this.chatRepository.find({
-      where: {
-        room: roomId,
-      },
-    }); 
-
-    if (messages.length > 0) {
+    try {
+      const otherUser = await this.userRepository.findOne({
+        where: { id: body.otherUserId },
+      });
+      if (!otherUser) {
+        return { status: false, message: 'User not found', data: [] };
+      }
+      const messages = await this.chatRepository.find({
+        where: [
+          { sender: { id: body.userId }, receiver: { id: body.otherUserId } },
+          { sender: { id: body.otherUserId }, receiver: { id: body.userId } },
+        ],
+        relations: ['sender', 'receiver'],
+        order: { created_at: 'ASC' },
+        select: {
+          id: true,
+          message: true,
+          created_at: true,
+          sender: { id: true, name: true },
+          receiver: { id: true, name: true },
+        },
+      });
       return {
         status: true,
-        message: 'Chat history found',
+        message: messages.length > 0 ? 'Chat history found' : 'No messages yet',
         data: messages,
       };
+    } catch (error) {
+      console.error('Error fetching chat history:', error);
+      return {
+        status: false,
+        message: 'Failed to fetch chat history',
+        data: [],
+      };
     }
-
-    return {
-      status: false,
-      message: 'No chat history found',
-      data: [],
-    };
   }
 
-  @Post('getchat')
-  async Getchat(@Body() body: { userId: string, otherUserEmail: string }) {
-    // First, find the other user's ID from their email
-    const otherUser = await this.userRepository.findOne({
-      where: { email: body.otherUserEmail }
-    });
+  @Post('search-users')
+  async searchUsers(@Body() body: { query: string; currentUserId: string }) {
+    try {
+      const users = await this.userRepository
+        .createQueryBuilder('user')
+        .where('user.email LIKE :query OR user.name LIKE :query', {
+          query: `%${body.query}%`,
+        })
+        .andWhere('user.id != :currentUserId', {
+          currentUserId: body.currentUserId,
+        })
+        .take(10)
+        .getMany();
 
-    if (!otherUser) {
-      throw new NotFoundException('User not found with the provided email');
-    }
-
-    const messages = await this.chatRepository.find({
-      where: [
-        {
-          sender: body.userId,
-          receiver: otherUser.id,
-        },
-        {
-          sender: otherUser.id,
-          receiver: body.userId,
-        }
-      ],
-      order: {
-        created_at: 'ASC'
-      }
-    });
-
-    if (messages.length > 0) {
       return {
         status: true,
-        message: 'Chat history found',
-        data: messages,
+        message: 'Users found',
+        data: users,
+      };
+    } catch (error) {
+      console.error('Error searching users:', error);
+      return {
+        status: false,
+        message: 'Failed to search users',
+        data: [],
       };
     }
+  }
 
-    return {
-      status: false,
-      message: 'No chat history found',
-      data: [],
-    };
+  @Get('getUserChatlist/:userId')
+  async getUserChatlist(@Param('userId') userId: string) {
+    try {
+      const chats = await this.chatRepository.find({
+        where: [{ sender: { id: userId } }, { receiver: { id: userId } }],
+        order: { created_at: 'DESC' },
+        relations: ['sender', 'receiver'],
+      });
+
+      if (!chats.length) {
+        return {
+          status: true,
+          message: 'No chats found',
+          data: [],
+        };
+      }
+      const otherUserIds = [
+        ...new Set(
+          chats.map((chat) =>
+            chat.sender.id === userId ? chat.receiver.id : chat.sender.id,
+          ),
+        ),
+      ];
+      const otherUsers = await this.userRepository.find({
+        where: { id: In(otherUserIds) },
+        select: ['id', 'name'],
+      });
+
+      const chatList = otherUsers.map((user) => {
+        const lastMessage = chats.find(
+          (c) => c.sender.id === user.id || c.receiver.id === user.id,
+        );
+        return {
+          userId: user.id,
+          userName: user.name,
+          lastMessage: lastMessage?.message || null,
+          lastMessageAt: lastMessage?.created_at || null,
+        };
+      });
+      return {
+        status: true,
+        message: 'Chat list fetched successfully',
+        data: chatList,
+      };
+    } catch (error) {
+      console.error('Error fetching chat list:', error);
+      return {
+        status: false,
+        message: 'Error fetching chat list',
+        error: error.message,
+      };
+    }
   }
 }

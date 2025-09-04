@@ -7,16 +7,15 @@ import { configuration } from 'config/configuration';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuthModule } from './modules/auth/auth.module';
-import * as crypto from 'crypto';
+// import * as crypto from 'crypto';
 import { dataSourceOptions } from './data-source';
 import { UserTokenModule } from './modules/user-token/user-token.module';
 import { OtpModule } from './modules/otp/otp.module';
-// import { ChatGateway } from './chat/chat.gateway';
 import { ChatModule } from './modules/chat/chat.module';
 import { ContactModule } from './modules/contact/contact.module';
 
-
-global.crypto = crypto as any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// (global as any).crypto = crypto;
 
 @Module({
   imports: [
@@ -36,7 +35,6 @@ global.crypto = crypto as any;
     OtpModule,
     ChatModule,
     ContactModule,
-   
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,4 +1,3 @@
-
 import { configuration } from 'config/configuration';
 import { DataSource, DataSourceOptions } from 'typeorm';
 export const dataSourceOptions: DataSourceOptions = {
@@ -8,14 +7,13 @@ export const dataSourceOptions: DataSourceOptions = {
   username: configuration().DB_USERNAME,
   password: configuration().DB_PASSWORD,
   database: configuration().DB_NAME,
-  synchronize: false,
-  logging: true,
+  synchronize: true,
+  logging: false,
   ssl: process.env.POSTGRES_SSL
     ? {
         rejectUnauthorized: false,
       }
     : false,
-  
   entities: ['dist/**/*.entity.js'],
   migrations: ['dist/src/migrations/*.js'],
 };

@@ -40,13 +40,13 @@ export class AuthController {
 
   @Post('reset-password')
   async resetPassword(
-    @Body() resetPasswordDto: { email: string; newPassword: string;  },
+    @Body() resetPasswordDto: { email: string; newPassword: string },
     @Res() res: Response,
   ) {
     return this.authService.resetPassword(
       resetPasswordDto.email,
       resetPasswordDto.newPassword,
-      
+
       res,
     );
   }

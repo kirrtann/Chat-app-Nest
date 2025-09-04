@@ -33,7 +33,6 @@ export class AuthService {
 
     // generate token
     const newToken = this.generateToken(entity.id, 'fk_user', 'user');
-
     if (token) {
       const isExpired = await this.isTokenExpired(token);
 
@@ -48,7 +47,6 @@ export class AuthService {
         // New Token
         return newToken;
       }
-
       // Update Login Time
       await this.userTokenRepository.save({
         id: token.id,
@@ -132,9 +130,6 @@ export class AuthService {
           res,
         );
       }
-      // Delete existing unverified user
-      
-      // await this.userRepository.delete(already.id);
     }
 
     // Create new user

@@ -7,7 +7,7 @@ import { UserToken } from 'src/modules/user-token/entities/user-token.entity';
 import { Otp } from '../otp/entities/otp.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User,UserToken,Otp])],
+  imports: [TypeOrmModule.forFeature([User, UserToken, Otp])],
   controllers: [AuthController],
   providers: [AuthService],
 })

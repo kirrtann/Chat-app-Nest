@@ -1,7 +1,5 @@
-
 // import { DataSource, DataSourceOptions } from 'typeorm';
 // import { configuration } from './configuration';
-
 
 // export const dataSourceOptions: DataSourceOptions = {
 //   type: 'postgres',

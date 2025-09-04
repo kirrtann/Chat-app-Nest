@@ -1,15 +1,26 @@
-import { DefaultEntity } from 'src/shared/entities/DefaultEntity';
+import { User } from 'src/modules/user/entities/user.entity';
 import {
   Entity,
+  PrimaryGeneratedColumn,
   Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 
-@Entity()
-export class Chat extends DefaultEntity {
+@Entity('chat')
+export class Chat {
+  @PrimaryGeneratedColumn()
+  id: number;
 
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'sender_id' })
+  sender: User;
 
-  @Column()
-  sender: string;
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'receiver_id' })
+  receiver: User;
 
   @Column()
   room: string;
@@ -17,6 +28,12 @@ export class Chat extends DefaultEntity {
   @Column('text')
   message: string;
 
-  @Column({ nullable: true })
-  receiver: string;
+  @Column({ default: false })
+  is_read: boolean;
+
+  @CreateDateColumn()
+  created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
 }

@@ -2,7 +2,9 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 
 // Explicitly load the correct env file
-dotenv.config({ path: path.resolve(__dirname, '../../config/env/localhost.env') });
+dotenv.config({
+  path: path.resolve(__dirname, '../../config/env/localhost.env'),
+});
 
 export const configuration = () => ({
   NODE_ENV: process.env.NODE_ENV,
