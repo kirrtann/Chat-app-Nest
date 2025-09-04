@@ -13,29 +13,31 @@ export class ChatController {
     private readonly userRepository: Repository<User>,
   ) {}
 
-  @Post('history')
-  async getChatHistory(@Body() body: { userId: string; otherUserId: string }) {
+  @Post('history') async getChatHistory(
+    @Body() body: { userId: string; otherUserId: string },
+  ) {
     try {
       const otherUser = await this.userRepository.findOne({
         where: { id: body.otherUserId },
       });
-
       if (!otherUser) {
-        return {
-          status: false,
-          message: 'User not found',
-          data: [],
-        };
+        return { status: false, message: 'User not found', data: [] };
       }
       const messages = await this.chatRepository.find({
         where: [
-          { sender: body.userId, receiver: body.otherUserId },
-          { sender: body.otherUserId, receiver: body.userId },
+          { sender: { id: body.userId }, receiver: { id: body.otherUserId } },
+          { sender: { id: body.otherUserId }, receiver: { id: body.userId } },
         ],
+        relations: ['sender', 'receiver'],
         order: { created_at: 'ASC' },
-        select: ['id', 'created_at', 'sender', 'receiver', 'message'],
+        select: {
+          id: true,
+          message: true,
+          created_at: true,
+          sender: { id: true, name: true },
+          receiver: { id: true, name: true },
+        },
       });
-
       return {
         status: true,
         message: messages.length > 0 ? 'Chat history found' : 'No messages yet',
@@ -46,32 +48,6 @@ export class ChatController {
       return {
         status: false,
         message: 'Failed to fetch chat history',
-        data: [],
-      };
-    }
-  }
-
-  @Get('rooms/:userId')
-  async getUserRooms(@Param('userId') userId: string) {
-    try {
-      const rooms = await this.chatRepository
-        .createQueryBuilder('chat')
-        .select(['chat.room', 'MAX(chat.created_at) as last_message_time'])
-        .where('chat.sender = :userId OR chat.receiver = :userId', { userId })
-        .groupBy('chat.room')
-        .orderBy('last_message_time', 'DESC')
-        .getRawMany();
-
-      return {
-        status: true,
-        message: 'User rooms found',
-        data: rooms,
-      };
-    } catch (error) {
-      console.error('Error fetching user rooms:', error);
-      return {
-        status: false,
-        message: 'Failed to fetch rooms',
         data: [],
       };
     }
@@ -110,8 +86,9 @@ export class ChatController {
   async getUserChatlist(@Param('userId') userId: string) {
     try {
       const chats = await this.chatRepository.find({
-        where: [{ sender: userId }, { receiver: userId }],
+        where: [{ sender: { id: userId } }, { receiver: { id: userId } }],
         order: { created_at: 'DESC' },
+        relations: ['sender', 'receiver'],
       });
 
       if (!chats.length) {
@@ -124,7 +101,7 @@ export class ChatController {
       const otherUserIds = [
         ...new Set(
           chats.map((chat) =>
-            chat.sender === userId ? chat.receiver : chat.sender,
+            chat.sender.id === userId ? chat.receiver.id : chat.sender.id,
           ),
         ),
       ];
@@ -135,7 +112,7 @@ export class ChatController {
 
       const chatList = otherUsers.map((user) => {
         const lastMessage = chats.find(
-          (c) => c.sender === user.id || c.receiver === user.id,
+          (c) => c.sender.id === user.id || c.receiver.id === user.id,
         );
         return {
           userId: user.id,

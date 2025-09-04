@@ -11,6 +11,7 @@ import { Server, Socket } from 'socket.io';
 import { Chat } from './entities/chat.entity';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
+import { User } from '../user/entities/user.entity';
 
 interface UserInfo {
   userId: string;
@@ -162,16 +163,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     const chatMessage = new Chat();
-    chatMessage.sender = senderId;
-    chatMessage.receiver = receiverId;
+    chatMessage.sender = { id: senderId } as User;
+    chatMessage.receiver = { id: receiverId } as User;
     chatMessage.room = room;
     chatMessage.message = message.trim();
     const savedMessage = await this.chatRepository.save(chatMessage);
 
     const messageData = {
       id: savedMessage.id,
-      sender: senderId,
-      receiver: receiverId,
+      sender: { id: senderId },
+      receiver: { id: receiverId },
       message: message.trim(),
       room,
       timestamp: savedMessage.created_at.toISOString(),

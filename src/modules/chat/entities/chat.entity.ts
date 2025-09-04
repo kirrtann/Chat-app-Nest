@@ -1,9 +1,12 @@
+import { User } from 'src/modules/user/entities/user.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 
 @Entity('chat')
@@ -11,11 +14,13 @@ export class Chat {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  sender: string;
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'sender_id' })
+  sender: User;
 
-  @Column()
-  receiver: string;
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'receiver_id' })
+  receiver: User;
 
   @Column()
   room: string;
