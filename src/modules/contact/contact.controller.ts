@@ -26,9 +26,4 @@ export class ContactController {
   ) {
     return await this.contactService.acceptContact(createContactDto, res);
   }
-
-  @Get('allUsers/:name')
-  async getallusers(@Param('name') email: string, @Res() res: Response) {
-    return await this.contactService.getAllUsers(email, res);
-  }
 }

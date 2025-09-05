@@ -53,35 +53,6 @@ export class ChatController {
     }
   }
 
-  @Post('search-users')
-  async searchUsers(@Body() body: { query: string; currentUserId: string }) {
-    try {
-      const users = await this.userRepository
-        .createQueryBuilder('user')
-        .where('user.email LIKE :query OR user.name LIKE :query', {
-          query: `%${body.query}%`,
-        })
-        .andWhere('user.id != :currentUserId', {
-          currentUserId: body.currentUserId,
-        })
-        .take(10)
-        .getMany();
-
-      return {
-        status: true,
-        message: 'Users found',
-        data: users,
-      };
-    } catch (error) {
-      console.error('Error searching users:', error);
-      return {
-        status: false,
-        message: 'Failed to search users',
-        data: [],
-      };
-    }
-  }
-
   @Get('getUserChatlist/:userId')
   async getUserChatlist(@Param('userId') userId: string) {
     try {

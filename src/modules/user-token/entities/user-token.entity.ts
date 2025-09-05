@@ -1,9 +1,14 @@
-import { User } from "src/modules/user/entities/user.entity";
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { User } from 'src/modules/user/entities/user.entity';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 @Entity()
 export class UserToken {
-
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -13,6 +18,7 @@ export class UserToken {
 
   @Column({ type: 'text' })
   token: string;
+
   @Column({
     type: 'timestamp with time zone',
     default: () => 'NOW()',

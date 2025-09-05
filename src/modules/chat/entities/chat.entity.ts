@@ -11,7 +11,7 @@ import {
 
 @Entity('chat')
 export class Chat {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn('uuid')
   id: number;
 
   @ManyToOne(() => User)

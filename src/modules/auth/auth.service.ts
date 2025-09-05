@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-
 import { CreateUserDto } from 'src/modules/user/dto/create-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -31,37 +30,29 @@ export class AuthService {
       },
     });
 
-    // generate token
     const newToken = this.generateToken(entity.id, 'fk_user', 'user');
     if (token) {
       const isExpired = await this.isTokenExpired(token);
-
       if (isExpired) {
-        // Update with new token
         await this.userTokenRepository.save({
           id: token.id,
           token: newToken,
 
           login_time: new Date().toISOString(),
         });
-        // New Token
         return newToken;
       }
-      // Update Login Time
       await this.userTokenRepository.save({
         id: token.id,
 
         login_time: new Date().toISOString(),
       });
-      // Old token which is not expired
+
       return token.token;
     }
-
-    // Create new token
     const result = await this.userTokenRepository.save({
       [table]: { id: entity.id },
       token: newToken,
-
       login_time: new Date().toISOString(),
     });
     return result.token;
@@ -80,7 +71,7 @@ export class AuthService {
       } else {
         return true;
       }
-    } catch (err) {
+    } catch {
       return true;
     }
   };
@@ -138,19 +129,17 @@ export class AuthService {
     user.email = createUserDto.email;
     user.password = await bcrypt.hash(createUserDto.password, 10);
     user.birth_date = createUserDto.birth_date;
-    user.is_verified = false; // User will be verified after OTP validation
-
-    //  Save user first before creating OTP
+    user.is_verified = false;
     const savedUser = await this.userRepository.save(user);
 
     // Generate OTP
     const otpCode = generateRandomOtp();
     const otp = new Otp();
-    otp.user = savedUser; // Now user has an ID
+    otp.user = savedUser;
     otp.otp = otpCode;
     otp.email = savedUser.email;
     otp.type = OtpType.SIGN_UP;
-    otp.expire_at = Math.floor((Date.now() + 600000) / 1000); // Expires in 1 minutes
+    otp.expire_at = Math.floor((Date.now() + 600000) / 1000);
 
     await this.otpRepository.save(otp);
     await sendOtp(savedUser, otpCode);
@@ -166,14 +155,11 @@ export class AuthService {
 
   async login(email: string, password: string, res: Response) {
     const user = await this.userRepository.findOne({
-      where: { email },
+      where: { email, is_verified: true },
     });
 
     if (!user) {
-      return response.badRequest(
-        { message: 'Email or password is wrong!', data: {} },
-        res,
-      );
+      return response.badRequest({ message: 'User Not Found', data: {} }, res);
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -206,17 +192,12 @@ export class AuthService {
         user: true,
       },
     });
-
-    // If entered wrong otp
     if (!otp) {
       throw new BadRequestException(MESSAGE.INVALID_OTP);
     }
     const isExpired = otp.expire_at <= Math.floor(Date.now() / 1000);
-    // const isExpired = otp.expire_at - Math.floor(Date.now() / 1000) > 0 ? false : true;
 
-    // If otp expired
     if (isExpired) {
-      // Delete Old OTP
       await this.otpRepository.update(otp.id, {
         deleted_at: new Date().toISOString(),
       });
@@ -224,12 +205,10 @@ export class AuthService {
       throw new BadRequestException(MESSAGE.INVALID_OTP);
     }
 
-    // Verify OTP.
     await this.otpRepository.update(otp.id, {
       is_verified: true,
     });
 
-    // Verify User
     await this.userRepository.update(otp.user.id, {
       is_verified: true,
     });
@@ -257,19 +236,15 @@ export class AuthService {
     if (!user) {
       return response.badRequest({ message: 'Email not found', data: {} }, res);
     }
-
-    // Generate OTP
     const otpCode = generateRandomOtp();
     const otp = new Otp();
     otp.user = user;
     otp.otp = otpCode;
     otp.email = user.email;
     otp.type = OtpType.FORGOT_PASSWORD;
-    otp.expire_at = Math.floor((Date.now() + 600000) / 1000); // Expires in 10 minutes
-
+    otp.expire_at = Math.floor((Date.now() + 600000) / 1000);
     await this.otpRepository.save(otp);
     await sendOtp(user, otpCode);
-
     return response.successResponse(
       {
         message: `Password reset OTP sent to ${user.email}`,
@@ -295,7 +270,6 @@ export class AuthService {
     if (!otp) {
       throw new BadRequestException(MESSAGE.INVALID_OTP);
     }
-
     const isExpired = otp.expire_at <= Math.floor(Date.now() / 1000);
     if (isExpired) {
       await this.otpRepository.update(otp.id, {
@@ -303,11 +277,9 @@ export class AuthService {
       });
       throw new BadRequestException(MESSAGE.INVALID_OTP);
     }
-
     await this.otpRepository.update(otp.id, {
       is_verified: true,
     });
-
     return {
       message: 'OTP verified successfully',
       email: otp.email,
@@ -334,7 +306,7 @@ export class AuthService {
         { message: 'Password reset successful', data: {} },
         res,
       );
-    } catch (error) {
+    } catch {
       return response.badRequest(
         { message: 'Invalid or expired reset token', data: {} },
         res,

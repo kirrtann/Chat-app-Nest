@@ -1,15 +1,13 @@
 export class CreateAuthDto {
+  name: string;
 
-    name: string;
-  
-    email: string;
-  
-    password: string;
-  
-    created_at: Date;
-  
-    updateda_at: Date;
-  
-    deleted_at: Date;
+  email: string;
 
+  password: string;
+
+  created_at: Date;
+
+  updateda_at: Date;
+
+  deleted_at: Date;
 }

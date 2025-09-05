@@ -6,11 +6,10 @@ export enum UserStatus {
 
 export enum OtpType {
   SIGN_UP = 'sign_up',
-  FORGOT_PASSWORD = 'forgot_password'
+  FORGOT_PASSWORD = 'forgot_password',
 }
 
 export enum DefaultStatus {
   ACTIVE = 'active',
   IN_ACTIVE = 'in_active',
 }
-
