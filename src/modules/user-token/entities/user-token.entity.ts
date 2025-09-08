@@ -26,5 +26,5 @@ export class UserToken {
   created_at: string;
 
   @Column({ type: 'timestamp with time zone', nullable: true })
-  deleted_at: string;
+  deleted_at: Date;
 }

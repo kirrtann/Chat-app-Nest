@@ -12,11 +12,11 @@ export const MESSAGE = {
   METHOD_NOT_ALLOWED: 'Method Not Allowed.',
   MAIL_NOT_SEND: 'Mail not send for this configuration',
   ALREADY_EXISTS: (record: string) => `${record} Already Exists`,
-  OTP_VERIFICATION: ' skype Verification OTP',
+  OTP_VERIFICATION: 'Skype Verification OTP',
   VERIFY_OTP_SENT_TO: (email: string) =>
     `An OTP has been sent to ${email}. Please check your inbox.`,
   INVALID_OTP: 'Invalid OTP!',
-  WRONG_CREDENTIALS: 'Wrong credentials!',
+  WRONG_CREDENTIALS: 'Email or password is wrong!',
   COMPLETE_VERIFICATION:
     'OTP Sent to your email, Please complete Signup OTP verification',
   ACCOUNT_BLOCKED: 'Your account is blocked by admin',
@@ -24,10 +24,14 @@ export const MESSAGE = {
   FILE_REQUIRED: 'File is required',
   USER_USING_AVATAR: (count: number) =>
     `${count} ${count === 1 ? 'user is' : 'users are'} using this avatar.`,
-};
-
-export const VALUE = {
-  limit: 10,
-  offset: 0,
-  rootFolder: 'metaverse',
+  EMAIL_EXISTS_VERIFIED: (email: string) =>
+    `Email ${email} already exists and is verified`,
+  USER_NOT_FOUND: 'User not found',
+  CREATE_ACCOUNT_SUCCESS: 'Create Account Successful',
+  PASSWORD_RESET_SENT: (email: string) => `Password reset OTP sent to ${email}`,
+  OTP_VERIFIED: 'OTP verified successfully',
+  INVALID_RESET: 'Invalid reset request',
+  PASSWORD_RESET_SUCCESS: 'Password reset successful',
+  OTP_SENT: (email: string) => `OTP sent to ${email}`,
+  NEW_OTP_SENT: (email: string) => `New OTP sent to ${email}`,
 };

@@ -106,4 +106,34 @@ export class ChatController {
       };
     }
   }
+
+  @Post('deletechatlist')
+  async deleteChatList(
+    @Body() body: { userId: string; otherUserId: string[] | string },
+  ) {
+    try {
+      const otherUserIds = Array.isArray(body.otherUserId)
+        ? body.otherUserId
+        : [body.otherUserId];
+
+      if (!body.userId || otherUserIds.length === 0) {
+        return { success: false, message: 'Invalid request data' };
+      }
+
+      await this.chatRepository
+        .createQueryBuilder()
+        .update(Chat)
+        .set({ deleted_at: new Date() })
+        .where(
+          '(sender_id = :userId AND receiver_id IN (:...otherUserIds)) OR (sender_id IN (:...otherUserIds) AND receiver_id = :userId)',
+          { userId: body.userId, otherUserIds },
+        )
+        .execute();
+
+      return { success: true, message: 'Chats deleted successfully' };
+    } catch (error) {
+      console.error('Error deleting chats:', error);
+      return { success: false, message: 'Failed to delete chats', error };
+    }
+  }
 }

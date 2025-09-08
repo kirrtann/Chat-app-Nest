@@ -1,152 +1,101 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { CreateUserDto } from 'src/modules/user/dto/create-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from 'src/modules/user/entities/user.entity';
 import * as bcrypt from 'bcryptjs';
-import response from 'utils/response';
 import * as jwt from 'jsonwebtoken';
 import { UserToken } from 'src/modules/user-token/entities/user-token.entity';
 import { MESSAGE } from 'src/shared/constants/constant';
 import { Otp } from '../otp/entities/otp.entity';
-import { VarifyOptDto } from './dto/varifyopt.dto';
 import { OtpType } from 'src/shared/constants/enum';
-import generateRandomOtp from 'src/shared/function/generet-rendom-otp';
 import sendOtp from 'src/shared/function/send-otp';
+import response from 'utils/response';
+import { Response } from 'express';
+import generateRandomOtp from 'src/shared/function/generet-rendom-otp';
+import { VerifyOtpDto } from './dto/varifyopt.dto';
+
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User) private readonly userRepository: Repository<User>,
     @InjectRepository(UserToken)
     private readonly userTokenRepository: Repository<UserToken>,
-    @InjectRepository(Otp)
-    private readonly otpRepository: Repository<Otp>,
+    @InjectRepository(Otp) private readonly otpRepository: Repository<Otp>,
   ) {}
 
-  async getToken(table: string, entity: User): Promise<string> {
-    const token = await this.userTokenRepository.findOne({
-      where: {
-        [table]: { id: entity.id },
-      },
-    });
-
-    const newToken = this.generateToken(entity.id, 'fk_user', 'user');
-    if (token) {
-      const isExpired = await this.isTokenExpired(token);
-      if (isExpired) {
-        await this.userTokenRepository.save({
-          id: token.id,
-          token: newToken,
-
-          login_time: new Date().toISOString(),
-        });
-        return newToken;
-      }
-      await this.userTokenRepository.save({
-        id: token.id,
-
-        login_time: new Date().toISOString(),
-      });
-
-      return token.token;
-    }
-    const result = await this.userTokenRepository.save({
-      [table]: { id: entity.id },
-      token: newToken,
-      login_time: new Date().toISOString(),
-    });
-    return result.token;
-  }
-  generateToken = (id, column, table) => {
-    return jwt.sign({ id, column, table }, process.env.JWT_SECRET, {
+  private generateToken(userId: string): string {
+    return jwt.sign({ id: userId, table: 'user' }, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN,
     });
-  };
-
-  isTokenExpired = async (token) => {
+  }
+  private isTokenExpired(token: string): boolean {
     try {
-      const valid = await jwt.verify(token, process.env.JWT_SECRET);
-      if (valid) {
-        return false;
-      } else {
-        return true;
-      }
+      jwt.verify(token, process.env.JWT_SECRET);
+      return false;
     } catch {
       return true;
     }
-  };
-  createUserToken = async (payload) => {
-    const user = await this.userRepository.findOne({
-      where: { id: payload.fk_user },
+  }
+
+  private async saveUserToken(user: User, token: string): Promise<string> {
+    const existing = await this.userTokenRepository.findOne({
+      where: { user: { id: user.id }, deleted_at: null },
     });
-
-    if (!user) {
-      throw new Error('User not found');
-    }
-
-    const isExist = await this.userTokenRepository.findOne({
-      where: { user: { id: payload.fk_user }, deleted_at: null },
-    });
-
-    if (isExist) {
-      const isExpired = await this.isTokenExpired(isExist.token);
-      if (isExpired) {
-        isExist.token = payload.token;
-        await this.userTokenRepository.save(isExist);
-        return isExist.token;
-      } else {
-        return isExist.token;
+    if (existing) {
+      if (this.isTokenExpired(existing.token)) {
+        existing.token = token;
+        await this.userTokenRepository.save(existing);
+        return token;
       }
-    } else {
-      const token = new UserToken();
-      token.user = user;
-      token.token = payload.token;
-      const result = await this.userTokenRepository.save(token);
-      return result.token;
+      await this.userTokenRepository.save(existing);
+      return existing.token;
     }
-  };
+    const newToken = this.userTokenRepository.create({
+      user,
+      token,
+    });
+    const result = await this.userTokenRepository.save(newToken);
+    return result.token;
+  }
+
+  private async createAndSendOtp(user: User, type: OtpType): Promise<void> {
+    const otpCode = generateRandomOtp();
+    const otp = this.otpRepository.create({
+      user,
+      otp: otpCode,
+      email: user.email,
+      type,
+      is_verified: false,
+      expire_at: Math.floor((Date.now() + 600000) / 1000),
+    });
+    await this.otpRepository.save(otp);
+    await sendOtp(user, otpCode);
+  }
 
   async signUp(createUserDto: CreateUserDto, res: Response) {
-    const already = await this.userRepository.findOne({
+    const existing = await this.userRepository.findOne({
       where: { email: createUserDto.email },
     });
-
-    if (already) {
-      if (already.is_verified) {
-        return response.badRequest(
-          {
-            message: 'Email already exists and is verified',
-            data: { email: createUserDto.email },
-          },
-          res,
-        );
-      }
+    if (existing?.is_verified) {
+      return response.badRequest(
+        {
+          message: MESSAGE.EMAIL_EXISTS_VERIFIED(createUserDto.email),
+          data: { email: createUserDto.email },
+        },
+        res,
+      );
     }
-
-    // Create new user
-    const user = new User();
-    user.name = createUserDto.name;
-    user.email = createUserDto.email;
-    user.password = await bcrypt.hash(createUserDto.password, 10);
-    user.birth_date = createUserDto.birth_date;
-    user.is_verified = false;
+    const user = this.userRepository.create({
+      ...createUserDto,
+      password: await bcrypt.hash(createUserDto.password, 10),
+      is_verified: false,
+    });
     const savedUser = await this.userRepository.save(user);
-
-    // Generate OTP
-    const otpCode = generateRandomOtp();
-    const otp = new Otp();
-    otp.user = savedUser;
-    otp.otp = otpCode;
-    otp.email = savedUser.email;
-    otp.type = OtpType.SIGN_UP;
-    otp.expire_at = Math.floor((Date.now() + 600000) / 1000);
-
-    await this.otpRepository.save(otp);
-    await sendOtp(savedUser, otpCode);
-
+    await this.createAndSendOtp(savedUser, OtpType.SIGN_UP);
     return response.successResponse(
       {
-        message: `OTP sent to ${savedUser.email}. Please verify your email.`,
+        message: MESSAGE.OTP_SENT(savedUser.email),
         data: { email: savedUser.email },
       },
       res,
@@ -157,160 +106,170 @@ export class AuthService {
     const user = await this.userRepository.findOne({
       where: { email, is_verified: true },
     });
-
     if (!user) {
-      return response.badRequest({ message: 'User Not Found', data: {} }, res);
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
       return response.badRequest(
-        { message: 'Email or password is wrong!', data: {} },
+        { message: MESSAGE.USER_NOT_FOUND, data: {} },
         res,
       );
     }
-    const token = this.generateToken(user.id, 'fk_user', 'user');
-    await this.createUserToken({ fk_user: user.id, token });
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return response.badRequest(
+        { message: MESSAGE.WRONG_CREDENTIALS, data: {} },
+        res,
+      );
+    }
+    const token = this.generateToken(user.id);
+    await this.saveUserToken(user, token);
     return response.successResponse(
       {
-        message: 'Login successful',
+        message: MESSAGE.LOGIN,
         data: { id: user.id, name: user.name, token },
       },
       res,
     );
   }
 
-  async verifySignupOtp(verifyOtpDto: VarifyOptDto) {
+  async verifySignupOtp(dto: VerifyOtpDto, res: Response) {
     const otp = await this.otpRepository.findOne({
       where: {
-        email: verifyOtpDto.email,
-        otp: verifyOtpDto.otp,
+        email: dto.email,
+        otp: dto.otp,
         is_verified: false,
         type: OtpType.SIGN_UP,
       },
-      relations: {
-        user: true,
-      },
+      relations: { user: true },
     });
     if (!otp) {
-      throw new BadRequestException(MESSAGE.INVALID_OTP);
+      return response.badRequest(
+        { message: MESSAGE.INVALID_OTP, data: {} },
+        res,
+      );
     }
-    const isExpired = otp.expire_at <= Math.floor(Date.now() / 1000);
-
-    if (isExpired) {
-      await this.otpRepository.update(otp.id, {
-        deleted_at: new Date().toISOString(),
-      });
-
-      throw new BadRequestException(MESSAGE.INVALID_OTP);
+    if (otp.expire_at <= Math.floor(Date.now() / 1000)) {
+      otp.deleted_at = new Date().toISOString();
+      await this.otpRepository.save(otp);
+      return response.badRequest(
+        { message: MESSAGE.INVALID_OTP, data: {} },
+        res,
+      );
     }
-
-    await this.otpRepository.update(otp.id, {
-      is_verified: true,
-    });
-
-    await this.userRepository.update(otp.user.id, {
-      is_verified: true,
-    });
-
-    const loginResponse = await this.getLoginResponse('user', otp.user);
-    return loginResponse;
-  }
-  async getLoginResponse(table: 'user', entity: User) {
-    const Token = await this.getToken(table, entity);
-    return {
-      [table]: {
-        id: entity.id,
-        name: entity.name,
-        email: entity.email,
-      },
-      Token,
-    };
-  }
-
-  async forgotPassword(email: string, res: Response) {
-    const user = await this.userRepository.findOne({
-      where: { email },
-    });
-
-    if (!user) {
-      return response.badRequest({ message: 'Email not found', data: {} }, res);
-    }
-    const otpCode = generateRandomOtp();
-    const otp = new Otp();
-    otp.user = user;
-    otp.otp = otpCode;
-    otp.email = user.email;
-    otp.type = OtpType.FORGOT_PASSWORD;
-    otp.expire_at = Math.floor((Date.now() + 600000) / 1000);
+    otp.is_verified = true;
     await this.otpRepository.save(otp);
-    await sendOtp(user, otpCode);
+    otp.user.is_verified = true;
+    await this.userRepository.save(otp.user);
     return response.successResponse(
       {
-        message: `Password reset OTP sent to ${user.email}`,
-        data: { email: user.email },
+        message: MESSAGE.CREATE_ACCOUNT_SUCCESS,
+        data: { id: otp.user.id, email: otp.user.email },
       },
       res,
     );
   }
 
-  async verifyForgotPasswordOtp(verifyOtpDto: VarifyOptDto) {
+  async forgotPassword(email: string, res: Response) {
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) {
+      return response.badRequest(
+        { message: MESSAGE.RECORD_NOT_FOUND('Email'), data: {} },
+        res,
+      );
+    }
+    await this.createAndSendOtp(user, OtpType.FORGOT_PASSWORD);
+    return response.successResponse(
+      { message: MESSAGE.PASSWORD_RESET_SENT(email), data: { email } },
+      res,
+    );
+  }
+
+  async verifyForgotPasswordOtp(dto: VerifyOtpDto, res: Response) {
     const otp = await this.otpRepository.findOne({
       where: {
-        email: verifyOtpDto.email,
-        otp: verifyOtpDto.otp,
+        email: dto.email,
+        otp: dto.otp,
         is_verified: false,
         type: OtpType.FORGOT_PASSWORD,
       },
-      relations: {
-        user: true,
-      },
+      relations: { user: true },
     });
-
     if (!otp) {
-      throw new BadRequestException(MESSAGE.INVALID_OTP);
+      return response.badRequest(
+        { message: MESSAGE.INVALID_OTP, data: {} },
+        res,
+      );
     }
-    const isExpired = otp.expire_at <= Math.floor(Date.now() / 1000);
-    if (isExpired) {
-      await this.otpRepository.update(otp.id, {
-        deleted_at: new Date().toISOString(),
-      });
-      throw new BadRequestException(MESSAGE.INVALID_OTP);
+    if (otp.expire_at <= Math.floor(Date.now() / 1000)) {
+      otp.deleted_at = new Date().toISOString();
+      await this.otpRepository.save(otp);
+      return response.badRequest(
+        { message: MESSAGE.INVALID_OTP, data: {} },
+        res,
+      );
     }
-    await this.otpRepository.update(otp.id, {
-      is_verified: true,
-    });
-    return {
-      message: 'OTP verified successfully',
-      email: otp.email,
-    };
+
+    otp.is_verified = true;
+    await this.otpRepository.save(otp);
+    return response.successResponse(
+      { message: MESSAGE.OTP_VERIFIED, data: { email: otp.email } },
+      res,
+    );
   }
 
   async resetPassword(email: string, newPassword: string, res: Response) {
-    try {
-      const user = await this.userRepository.findOne({
-        where: { email },
-      });
-
-      if (!user) {
-        return response.badRequest(
-          { message: 'Invalid reset token', data: {} },
-          res,
-        );
-      }
-
-      user.password = await bcrypt.hash(newPassword, 10);
-      await this.userRepository.save(user);
-
-      return response.successResponse(
-        { message: 'Password reset successful', data: {} },
-        res,
-      );
-    } catch {
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) {
       return response.badRequest(
-        { message: 'Invalid or expired reset token', data: {} },
+        { message: MESSAGE.INVALID_RESET, data: {} },
         res,
       );
     }
+    user.password = await bcrypt.hash(newPassword, 10);
+    await this.userRepository.save(user);
+    return response.successResponse(
+      { message: MESSAGE.PASSWORD_RESET_SUCCESS, data: {} },
+      res,
+    );
+  }
+
+  async resendOtp(email: string, res: Response) {
+    const user = await this.userRepository.findOne({ where: { email } });
+    if (!user) {
+      return response.badRequest(
+        { message: MESSAGE.RECORD_NOT_FOUND('email'), data: {} },
+        res,
+      );
+    }
+    await this.otpRepository.update(
+      { email, is_verified: false, deleted_at: null },
+      { deleted_at: new Date().toISOString() },
+    );
+    await this.createAndSendOtp(user, OtpType.SIGN_UP);
+    return response.successResponse(
+      { message: MESSAGE.NEW_OTP_SENT(email), data: { email } },
+      res,
+    );
+  }
+
+  async logout(userId: string, res: Response) {
+    const userToken = await this.userTokenRepository.findOne({
+      where: {
+        user: { id: userId },
+        deleted_at: null,
+      },
+      relations: ['user'],
+    });
+    if (!userToken) {
+      return res.status(404).json({ message: 'No active session found' });
+    }
+    console.log(userToken);
+    console.log(userId);
+    await this.userTokenRepository.update(userToken.id, {});
+    return response.successResponse(
+      {
+        message: 'logout sussecful',
+        data: { userId },
+      },
+      res,
+    );
   }
 }

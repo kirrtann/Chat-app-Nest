@@ -1,4 +1,4 @@
-export class VarifyOptDto {
+export class VerifyOtpDto {
   email: string;
   otp: number;
 }

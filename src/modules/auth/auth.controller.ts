@@ -1,53 +1,56 @@
-import { Body, Controller, Post, Res } from '@nestjs/common';
+import { Body, Controller, Post, Put, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from '../user/dto/create-user.dto';
-import { VarifyOptDto } from './dto/varifyopt.dto';
+
+import { Response } from 'express';
+import { VerifyOtpDto } from './dto/varifyopt.dto';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('signup')
-  async signUp(@Body() createUserDto: CreateUserDto, @Res() res: Response) {
-    return this.authService.signUp(createUserDto, res);
+  signUp(@Body() dto: CreateUserDto, @Res() res: Response) {
+    return this.authService.signUp(dto, res);
   }
 
   @Post('login')
-  async login(
-    @Body() loginDto: { email: string; password: string },
+  login(
+    @Body() dto: { email: string; password: string },
     @Res() res: Response,
   ) {
-    return this.authService.login(loginDto.email, loginDto.password, res);
+    return this.authService.login(dto.email, dto.password, res);
   }
 
   @Post('verify-otp')
-  async verifyOtp(@Body() verifyOtpDto: VarifyOptDto) {
-    return this.authService.verifySignupOtp(verifyOtpDto);
+  verifyOtp(@Body() dto: VerifyOtpDto, @Res() res: Response) {
+    return this.authService.verifySignupOtp(dto, res);
   }
 
   @Post('forgot-password')
-  async forgotPassword(
-    @Body() forgotPasswordDto: { email: string },
-    @Res() res: Response,
-  ) {
-    return this.authService.forgotPassword(forgotPasswordDto.email, res);
+  forgotPassword(@Body() dto: { email: string }, @Res() res: Response) {
+    return this.authService.forgotPassword(dto.email, res);
   }
 
   @Post('verify-forgot-password-otp')
-  async verifyForgotPasswordOtp(@Body() verifyOtpDto: VarifyOptDto) {
-    return this.authService.verifyForgotPasswordOtp(verifyOtpDto);
+  verifyForgotPasswordOtp(@Body() dto: VerifyOtpDto, @Res() res: Response) {
+    return this.authService.verifyForgotPasswordOtp(dto, res);
   }
 
   @Post('reset-password')
-  async resetPassword(
-    @Body() resetPasswordDto: { email: string; newPassword: string },
+  resetPassword(
+    @Body() dto: { email: string; newPassword: string },
     @Res() res: Response,
   ) {
-    return this.authService.resetPassword(
-      resetPasswordDto.email,
-      resetPasswordDto.newPassword,
+    return this.authService.resetPassword(dto.email, dto.newPassword, res);
+  }
 
-      res,
-    );
+  @Put('resend-otp')
+  resendOtp(@Body() dto: { email: string }, @Res() res: Response) {
+    return this.authService.resendOtp(dto.email, res);
+  }
+  @Put('logout')
+  logout(@Body() dto: { userId: string }, @Res() res: Response) {
+    return this.authService.logout(dto.userId, res);
   }
 }

@@ -80,20 +80,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const userInfo = this.userSocketMap.get(client.id);
       this.userSocketMap.delete(client.id);
-
       this.rooms.forEach((users, room) => {
         const userToRemove = Array.from(users).find(
           (u) => u.socketId === client.id,
         );
         if (userToRemove) {
           users.delete(userToRemove);
-
           this.server.to(room).emit('user-left', {
             userId: userInfo?.userId,
             room: room,
             message: `User ${userInfo?.userId} left the chat`,
           });
-
           if (users.size === 0) {
             this.rooms.delete(room);
             this.roomMetadata.delete(room);
@@ -111,28 +108,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: { senderId: string; receiverId: string },
   ) {
     const { senderId, receiverId } = data;
-
     if (!senderId || !receiverId) {
       client.emit('error', { message: 'SenderId and ReceiverId required' });
       return;
     }
-
     const userInfo = this.userSocketMap.get(client.id);
     if (!userInfo) {
       client.emit('error', { message: 'User not authenticated' });
       return;
     }
-
     const room = generateRoomId(senderId, receiverId);
     client.join(room);
-
     if (!this.rooms.has(room)) {
       this.rooms.set(room, new Set());
       this.roomMetadata.set(room, { senderId, receiverId });
     }
-
     this.rooms.get(room)?.add(userInfo);
-
     client.emit('room-joined', {
       room,
       users: Array.from(this.rooms.get(room) || []),
@@ -147,14 +138,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     payload: { senderId: string; receiverId: string; message: string },
   ) {
     const { senderId, receiverId, message } = payload;
-
     if (!senderId || !receiverId || !message?.trim()) {
       client.emit('error', {
         message: 'senderId, receiverId and message are required',
       });
       return;
     }
-
     const room = generateRoomId(senderId, receiverId);
     const userInfo = this.userSocketMap.get(client.id);
     if (!userInfo) {
@@ -175,7 +164,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       receiver: { id: receiverId },
       message: message.trim(),
       room,
-      timestamp: savedMessage.created_at.toISOString(),
+      timestamp: savedMessage.created_at.toString(),
     };
     this.server.to(room).emit('new-message', messageData);
   }

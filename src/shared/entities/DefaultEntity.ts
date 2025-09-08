@@ -14,10 +14,10 @@ export class DefaultEntity {
   created_at: string;
 
   @Exclude()
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', nullable: true })
   updated_at: string;
 
   @Exclude()
-  @DeleteDateColumn({ name: 'deleted_at' })
-  deleted_at: string;
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  deleted_at: string | Date;
 }
