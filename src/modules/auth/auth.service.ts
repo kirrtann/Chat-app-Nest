@@ -43,18 +43,12 @@ export class AuthService {
       where: { user: { id: user.id }, deleted_at: null },
     });
     if (existing) {
-      if (this.isTokenExpired(existing.token)) {
-        existing.token = token;
-        await this.userTokenRepository.save(existing);
-        return token;
-      }
+      existing.token = token;
       await this.userTokenRepository.save(existing);
-      return existing.token;
+      return token;
     }
-    const newToken = this.userTokenRepository.create({
-      user,
-      token,
-    });
+
+    const newToken = this.userTokenRepository.create({ user, token });
     const result = await this.userTokenRepository.save(newToken);
     return result.token;
   }

@@ -1,10 +1,12 @@
 import { Chat } from './entities/chat.entity';
-import { Body, Controller, Post, Get, Param } from '@nestjs/common';
+import { Body, Controller, Post, Get, Param, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { User } from '../user/entities/user.entity';
+import { AuthGuard } from 'src/core/guard/auth.guard';
 
 @Controller('chat')
+@UseGuards(AuthGuard)
 export class ChatController {
   constructor(
     @InjectRepository(Chat)

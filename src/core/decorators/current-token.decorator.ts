@@ -7,9 +7,9 @@ export const CurrentToken = createParamDecorator(
     if (authorizationHeader) {
       const [type, token] = authorizationHeader.split(' ');
       if (type === 'Bearer' && token) {
-        return token; // Return the extracted token
+        return token;
       }
     }
-    return null; // Return null if the token is not present
+    return null;
   },
 );
