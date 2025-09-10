@@ -164,7 +164,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       receiver: { id: receiverId },
       message: message.trim(),
       room,
-      timestamp: savedMessage.created_at.toString(),
+      create_at: savedMessage.created_at.toString(),
     };
     this.server.to(room).emit('new-message', messageData);
   }

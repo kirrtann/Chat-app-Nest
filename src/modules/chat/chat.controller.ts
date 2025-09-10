@@ -84,9 +84,10 @@ export class ChatController {
       });
 
       const chatList = otherUsers.map((user) => {
-        const lastMessage = chats.find(
+        const userChats = chats.filter(
           (c) => c.sender.id === user.id || c.receiver.id === user.id,
         );
+        const lastMessage = userChats[0];
         return {
           userId: user.id,
           userName: user.name,

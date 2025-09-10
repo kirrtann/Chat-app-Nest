@@ -1,9 +1,21 @@
-import { Body, Controller, Post, Put, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from '../user/dto/create-user.dto';
 
 import { Response } from 'express';
 import { VerifyOtpDto } from './dto/varifyopt.dto';
+import { AuthGuard } from 'src/core/guard/auth.guard';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { User } from '../user/entities/user.entity';
+import { CurrentToken } from 'src/core/decorators/current-token.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -49,8 +61,14 @@ export class AuthController {
   resendOtp(@Body() dto: { email: string }, @Res() res: Response) {
     return this.authService.resendOtp(dto.email, res);
   }
-  @Put('logout')
-  logout(@Body() dto: { userId: string }, @Res() res: Response) {
-    return this.authService.logout(dto.userId, res);
+
+  @Get('logout')
+  @UseGuards(AuthGuard)
+  async logout(
+    @Res() res: Response,
+    @CurrentUser() user: User,
+    @CurrentToken() token: string,
+  ) {
+    return this.authService.logout(user, token, res);
   }
 }

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { ILike, Repository } from 'typeorm';
 import response from 'utils/response';
+import { MESSAGE } from 'src/shared/constants/constant';
 
 @Injectable()
 export class UserService {
@@ -21,7 +22,6 @@ export class UserService {
         name: true,
       },
     });
-
     if (users.length > 0) {
       return response.successResponse(
         {
@@ -31,7 +31,6 @@ export class UserService {
         res,
       );
     }
-
     return response.recordNotFound(
       {
         message: 'No users found',
@@ -41,16 +40,22 @@ export class UserService {
     );
   }
 
-  async getUserProfile(userId: string) {
+  async getUserProfile(userId: string, res: Response) {
     const user = await this.userRepository.findOne({
       where: { id: userId },
       select: {
         id: true,
         name: true,
         email: true,
+        birth_date: true,
       },
     });
-
-    return user;
+    return response.successResponse(
+      {
+        message: MESSAGE.RECORD_FOUND('Profile'),
+        data: user,
+      },
+      res,
+    );
   }
 }

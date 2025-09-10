@@ -1,10 +1,9 @@
-import { Controller, Get, Param, Res } from '@nestjs/common';
+import { Controller, Get, Param, Res, UseGuards } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { User } from './entities/user.entity';
-import response from 'utils/response';
-import { MESSAGE } from 'src/shared/constants/constant';
-
+import { AuthGuard } from 'src/core/guard/auth.guard';
+@UseGuards(AuthGuard)
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
@@ -16,13 +15,6 @@ export class UserController {
 
   @Get('profile')
   async myProfile(@CurrentUser() user: User, @Res() res: Response) {
-    const result = await this.userService.getUserProfile(user.id);
-    return response.successResponse(
-      {
-        message: MESSAGE.RECORD_FOUND('Profile'),
-        data: result,
-      },
-      res,
-    );
+    return await this.userService.getUserProfile(user.id, res);
   }
 }

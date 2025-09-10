@@ -34,4 +34,6 @@ export const MESSAGE = {
   PASSWORD_RESET_SUCCESS: 'Password reset successful',
   OTP_SENT: (email: string) => `OTP sent to ${email}`,
   NEW_OTP_SENT: (email: string) => `New OTP sent to ${email}`,
+  INVALID_LOGOUT: 'Invalid logout',
+  LOGOUT_SUCCESS: 'Logout Successful',
 };
